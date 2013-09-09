@@ -1,29 +1,8 @@
-//*****************************************************************************
-//
-// interrupts.c - Interrupt preemption and tail-chaining example.
-//
-// Copyright (c) 2012 Texas Instruments Incorporated.  All rights reserved.
-// Software License Agreement
-// 
-// Texas Instruments (TI) is supplying this software for use solely and
-// exclusively on TI's microcontroller products. The software is owned by
-// TI and/or its suppliers, and is protected under applicable copyright
-// laws. You may not combine this software with "viral" open-source
-// software in order to form a larger program.
-// 
-// THIS SOFTWARE IS PROVIDED "AS IS" AND WITH ALL FAULTS.
-// NO WARRANTIES, WHETHER EXPRESS, IMPLIED OR STATUTORY, INCLUDING, BUT
-// NOT LIMITED TO, IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
-// A PARTICULAR PURPOSE APPLY TO THIS SOFTWARE. TI SHALL NOT, UNDER ANY
-// CIRCUMSTANCES, BE LIABLE FOR SPECIAL, INCIDENTAL, OR CONSEQUENTIAL
-// DAMAGES, FOR ANY REASON WHATSOEVER.
-// 
-// This is part of revision 9453 of the EK-LM4F120XL Firmware Package.
-//
-//*****************************************************************************
-
-#define PART_LM4F120H5QR
-
+/*
+ * Interrupt based laser/harddrive scanning thinggy,
+ * based on ti's intterupt example
+ *
+ */
 #include "inc/hw_ints.h"
 #include "inc/hw_memmap.h"
 #include "inc/hw_nvic.h"
@@ -38,62 +17,6 @@
 #include "driverlib/systick.h"
 #include "driverlib/timer.h"
 #include "utils/uartstdio.h"
-
-//*****************************************************************************
-//
-//! \addtogroup example_list
-//! <h1>Interrupts (interrupts)</h1>
-//!
-//! This example application demonstrates the interrupt preemption and
-//! tail-chaining capabilities of Cortex-M4 microprocessor and NVIC.  Nested
-//! interrupts are synthesized when the interrupts have the same priority,
-//! increasing priorities, and decreasing priorities.  With increasing
-//! priorities, preemption will occur; in the other two cases tail-chaining
-//! will occur.  The currently pending interrupts and the currently executing
-//! interrupt will be displayed on the display; GPIO pins E1, E2 and E3 will
-//! be asserted upon interrupt handler entry and de-asserted before interrupt
-//! handler exit so that the off-to-on time can be observed with a scope or
-//! logic analyzer to see the speed of tail-chaining (for the two cases where
-//! tail-chaining is occurring).
-//
-//*****************************************************************************
-
-
-//*****************************************************************************
-//
-// The count of interrupts received.  This is incremented as each interrupt
-// handler runs, and its value saved into interrupt handler specific values to
-// determine the order in which the interrupt handlers were executed.
-//
-//*****************************************************************************
-volatile unsigned long g_ulIndex;
-
-//*****************************************************************************
-//
-// The value of g_ulIndex when the INT_GPIOA interrupt was processed.
-//
-//*****************************************************************************
-volatile unsigned long g_ulGPIOa;
-
-//*****************************************************************************
-//
-// The value of g_ulIndex when the INT_GPIOB interrupt was processed.
-//
-//*****************************************************************************
-volatile unsigned long g_ulGPIOb;
-
-//*****************************************************************************
-//
-// The value of g_ulIndex when the INT_GPIOC interrupt was processed.
-//
-//*****************************************************************************
-volatile unsigned long g_ulGPIOc;
-
-//*****************************************************************************
-//
-// The error routine that is called if the driver library encounters an error.
-//
-//*****************************************************************************
 #ifdef DEBUG
 void
 __error__(char *pcFilename, unsigned long ulLine)
@@ -101,6 +24,23 @@ __error__(char *pcFilename, unsigned long ulLine)
 }
 #endif
 
+
+//Data types
+typedef struct
+{
+	double dState; // Last position input
+	double iState; // Integrator state
+	double iMax, iMin;
+	// Maximum and minimum allowable integrator state
+	double iGain, // integral gain
+	pGain, // proportional gain
+	dGain; // derivative gain
+} SPid;
+
+//Prototypes
+
+void printDouble(double);
+double UpdatePID(SPid *, double , double);
 //*****************************************************************************
 //
 // Delay for the specified number of seconds.  Depending upon the current
@@ -131,17 +71,10 @@ Delay(unsigned long ulSeconds)
         }
     }
 }
-
-//*****************************************************************************
-//
-// Display the interrupt state on the UART.  The currently active and pending
-// interrupts are displayed.
-//
-//*****************************************************************************
 void
 DisplayIntStatus(void)
 {
-    unsigned long ulTemp;
+   // unsigned long ulTemp;
 
     //
     // Display the currently active interrupts.
@@ -162,6 +95,12 @@ DisplayIntStatus(void)
 
 volatile unsigned long lastPin0Time = 0;
 volatile unsigned long lastDurationPin0 = 0;
+
+
+volatile unsigned int calibMaxX=0;
+volatile unsigned int calibMinX=0;
+
+volatile float currentfeedbackY = 0.0f;
 
 
 void GPIO_PortD_IntHandler(void){
@@ -228,6 +167,13 @@ main(void)
 	unsigned long ulPeriod =1000 ;
 	volatile unsigned long dutyCycle = 800;
 
+	//Config PID stuff;
+	SPid xAxis;
+	xAxis.pGain = 10;
+	xAxis.iGain = 0.1;
+	xAxis.dGain = 50;
+
+
     //
     // Enable lazy stacking for interrupt handlers.  This allows floating-point
     // instructions to be used within interrupt handlers, but at the expense of
@@ -259,18 +205,20 @@ main(void)
 
     //VINCENT
     //ENABLE portD for interrupts conection
+
+    //the TSL235R runs between 0 - 100khz (dark/full saturation) @5v
     SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOD);
 
     //Make a pin an input:
     GPIOPinTypeGPIOInput(GPIO_PORTD_BASE, GPIO_PIN_0);
 
-    //we select faling edge, our light sensor has always 50% dutycylcle, so the freq, determines light-intensity.
+    //we select falling edge, our light sensor has always 50% duty-cycle, so the freq, determines light-intensity.
     GPIOIntTypeSet(GPIO_PORTD_BASE, GPIO_PIN_0, GPIO_FALLING_EDGE);
 
-    //clear the bit from this interupt as it has occurd, to enable the next interrupt
+    //clear the bit from this interrupt as it has occurred, to enable the next interrupt
     GPIOPinIntClear(GPIO_PORTD_BASE, GPIO_PIN_0);
 
-    //now enable this interupt actulally
+    //now enable this interrupt actually
     GPIOPinIntEnable(GPIO_PORTD_BASE, GPIO_PIN_0);
 
     //add an reference in the interrupt-service
@@ -296,6 +244,8 @@ main(void)
 
 
     // Configure timer 0 – this timer outputs to pf1 (led)
+    //https://sites.google.com/site/narasimhaweb/projects/pwm-on-stellaris-launchpad
+
     SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER0);
     TimerConfigure(TIMER0_BASE, TIMER_CFG_SPLIT_PAIR|TIMER_CFG_B_PWM);
     TimerLoadSet(TIMER0_BASE, TIMER_B, ulPeriod -1);
@@ -318,27 +268,95 @@ main(void)
     // Enable the interrupts.
     //
 
+    //TEST PID CODE
+    UARTprintf("put MAX value on sensor\n");
+    Delay(20);
+    calibMaxX = lastDurationPin0;
+
+    UARTprintf("put MIN value on sensor\n");
+    Delay(20);
+    calibMinX = lastDurationPin0;
+
+
+    unsigned int range = calibMaxX - calibMinX;
+
+    UARTprintf("done calibrating\n");
+    UARTprintf("MAX: ");
+    printDouble(calibMaxX);
+    UARTprintf("\n");
+
+    UARTprintf("Min: ");
+    printDouble(calibMinX);
+    UARTprintf("\n");
+
+    UARTprintf("range: ");
+    printDouble(range);
+    UARTprintf("\n");
+
+
+    xAxis.iMax = 100;
+    xAxis.iMin = -100;
+
+    //setting setpoint to 0
+    UARTprintf("setting set-point to 0\n");
+    double newPosition = (calibMinX + (range/2));
+
+    UARTprintf("setpoint set to: ");
+       printDouble(newPosition);
+       UARTprintf("\n");
+
     //
     UARTprintf("Started Program laserControlls\n");
 
+
     while(1)
     {
+       	TimerMatchSet(TIMER0_BASE, TIMER_B, dutyCycle++);
 
-
-    	char buff[10];
-    	unsigned long lastVal = lastDurationPin0;
-    	//sprintf(buff, "%d", lastDurationPin0, lastVal);
-    	//ftoa(lastVal, buff);
-    	//UARTprintf("Current delay: %s \n", buff );
-
-    	TimerMatchSet(TIMER0_BASE, TIMER_A, dutyCycle);
-
-		if(dutyCycle >= ulPeriod - 1){
+		if(dutyCycle >= ulPeriod - 1)
 			dutyCycle = 0;
-		}
 
-		dutyCycle++;
+		SysCtlDelay(10000000);
+//		SysCtlDelay(200000);
 
-		SysCtlDelay(200000);
+		double currentPosition = calibMinX +lastDurationPin0;
+		double error = (newPosition - currentPosition);
+		double drive = UpdatePID(&xAxis, error, currentPosition);
+		//do output to pwm or something
+		UARTprintf("current: ");
+		printDouble(currentPosition);
+
+		UARTprintf("\nerror: ");
+		printDouble(error);
+
+		UARTprintf("\npid cmd:  ");
+		printDouble(drive);
+		UARTprintf(" \n---\n");
+		//double error =
     }
+}
+
+void printDouble(double input){
+	char buff[10];
+	ftoa(input, buff);
+	UARTprintf("%s", buff);
+}
+
+double UpdatePID(SPid * pid, double error, double position)
+{
+	double pTerm,
+	dTerm, iTerm;
+	pTerm = pid->pGain * error;
+	// calculate the proportional term
+	// calculate the integral state with appropriate limiting
+	pid->iState += error;
+	if (pid->iState > pid->iMax)
+		pid->iState = pid->iMax;
+	else if (pid->iState < pid->iMin)
+		pid->iState = pid->iMin;
+
+	iTerm = pid->iGain * pid->iState; // calculate the integral term
+	dTerm = pid->dGain * (position - pid->dState);
+	pid->dState = position;
+	return pTerm + iTerm - dTerm;
 }
