@@ -22,6 +22,8 @@
 //
 //*****************************************************************************
 
+#define PART_LM4F120H5QR
+
 #include "inc/hw_ints.h"
 #include "inc/hw_memmap.h"
 #include "inc/hw_nvic.h"
@@ -34,6 +36,7 @@
 #include "driverlib/rom.h"
 #include "driverlib/sysctl.h"
 #include "driverlib/systick.h"
+#include "driverlib/timer.h"
 #include "utils/uartstdio.h"
 
 //*****************************************************************************
@@ -222,7 +225,8 @@ void ftoa(float f,char *buf)
 int
 main(void)
 {
-    unsigned long ulError;
+	unsigned long ulPeriod =1000 ;
+	volatile unsigned long dutyCycle = 800;
 
     //
     // Enable lazy stacking for interrupt handlers.  This allows floating-point
@@ -272,16 +276,38 @@ main(void)
     //add an reference in the interrupt-service
     IntEnable(INT_GPIOD);
 
+    //enable PWM STUFF
+
+    // Turn off LEDs
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);
+    GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3);
+    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3, 0);
+
+    // Configure LEDs PortF as Timer outputs -> see pg 659 of datasheet
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);
+    //GPIOPinConfigure(GPIO_PF1_T0CCP1|GPIO_PF2_T1CCP0|GPIO_PF3_T1CCP1);
+
+
+    ROM_GPIOPinConfigure(GPIO_PF3_T1CCP1);
+    ROM_GPIOPinConfigure(GPIO_PF2_T1CCP0);
+    ROM_GPIOPinConfigure(GPIO_PF1_T0CCP1);
+
+    GPIOPinTypeTimer(GPIO_PORTF_BASE, GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3);
+
+
+    // Configure timer 0 – this timer outputs to pf1 (led)
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER0);
+    TimerConfigure(TIMER0_BASE, TIMER_CFG_SPLIT_PAIR|TIMER_CFG_B_PWM);
+    TimerLoadSet(TIMER0_BASE, TIMER_B, ulPeriod -1);
+    TimerMatchSet(TIMER0_BASE, TIMER_B, dutyCycle); // PWM
+    TimerEnable(TIMER0_BASE, TIMER_B);
+
     // Set up and enable the SysTick timer.  It will be used as a reference
     // for delay loops in the interrupt handlers.  The SysTick timer period
     // will be set up for one second.
     //
     ROM_SysTickPeriodSet(ROM_SysCtlClockGet());
     ROM_SysTickEnable();
-
-    //
-    // Reset the error indicator.
-    //
 
     //
     // Enable interrupts to the processor.
@@ -293,18 +319,26 @@ main(void)
     //
 
     //
-    UARTprintf("\Started Program laserControlls\n");
+    UARTprintf("Started Program laserControlls\n");
 
     while(1)
     {
-    	//
+
 
     	char buff[10];
     	unsigned long lastVal = lastDurationPin0;
     	//sprintf(buff, "%d", lastDurationPin0, lastVal);
-    	ftoa(lastVal, buff);
-    	UARTprintf("Current delay: %s \n", buff );
+    	//ftoa(lastVal, buff);
+    	//UARTprintf("Current delay: %s \n", buff );
 
-    	Delay(1);
+    	TimerMatchSet(TIMER0_BASE, TIMER_A, dutyCycle);
+
+		if(dutyCycle >= ulPeriod - 1){
+			dutyCycle = 0;
+		}
+
+		dutyCycle++;
+
+		SysCtlDelay(200000);
     }
 }
