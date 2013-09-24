@@ -29,7 +29,6 @@ __error__(char *pcFilename, unsigned long ulLine)
 #endif
 
 
-
 //THE interupt handler routine for our light-reciever
 
 volatile unsigned long lastPinA = 0;
@@ -38,8 +37,8 @@ volatile unsigned long lastDurationA = 0;
 volatile unsigned long lastDurationB = 0;
 volatile int xPosition = 0;
 
-unsigned long calibMaxX = 0;
-unsigned long calibMinX = 0;
+volatile long calibMaxX=1;
+volatile long calibMinX=2;
 
 volatile float currentfeedbackY = 0.0f;
 
@@ -177,11 +176,9 @@ main(void)
 
 	//Config PID stuff;
 	SPid xAxis;
-
 	xAxis.pGain = 0.5;
 	xAxis.iGain = 0.001;
 	xAxis.dGain = 0.001;
-
 
     //
     // Enable lazy stacking for interrupt handlers.  This allows floating-point
@@ -308,13 +305,11 @@ main(void)
 
     while(1)
     {
-
   		Delay(10);
 
 		double currentPosition = map(lastDurationA, calibMinX, calibMaxX, 0, 1000);
 		long error = (newPosition - currentPosition);
      	double drive = UpdatePID(&xAxis, error, currentPosition);
-
 		//do output to pwm or something
     	UARTprintf("sensdata:: ");
     		printDouble(lastDurationA);
@@ -329,10 +324,10 @@ main(void)
 		printDouble(drive);
 		UARTprintf(" \n---\n");
 
-
 		driveCoil1(drive);
-}
-}
+    	}
+    }
+
 
 void driveCoil1(long driveValue){
 	if (driveValue > 0){
