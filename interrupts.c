@@ -43,90 +43,51 @@ volatile long calibMinX=2;
 volatile float currentfeedbackY = 0.0f;
 
 //fired when pin triggers high
-void GPIO_PortD_IntHandler(void){
+void GPIO_PortA_IntHandler(void){
 	unsigned long now = ROM_SysTickValueGet();
 
-	if(lastPinA > now){
-		//fix for counter-roll_over
-		lastDurationA = (SysTickPeriodGet() - lastPinA) + now;
-	}
-	else{
-		lastDurationA = now - lastPinA;
-	}
+	long lIntPinStatus = GPIOPinIntStatus(GPIO_PORTA_BASE,GPIO_PIN_6 | GPIO_PIN_7);
 
-	lastPinA = now;
-    GPIOPinIntClear(GPIO_PORTD_BASE, GPIO_PIN_0);
+	switch(lIntPinStatus) {
+		case  GPIO_PIN_6:
+			{
+				GPIOPinIntClear(GPIO_PORTA_BASE, GPIO_PIN_6);        // Clear the INT now
+				if(lastPinA > now){
+					//fix for counter-roll_over
+					lastDurationA = (SysTickPeriodGet() - lastPinA) + now;
+				}
+				else{
+					lastDurationA = now - lastPinA;
+				}
+
+				lastPinA = now;
+			}
+			break;
+
+		case  GPIO_PIN_7:
+			{
+					GPIOPinIntClear(GPIO_PORTA_BASE, GPIO_PIN_7);        // Clear the INT now
+					if(lastPinB > now){
+						//fix for counter-roll_over
+						lastDurationB = (SysTickPeriodGet() - lastPinB) + now;
+					}
+					else{
+						lastDurationB = now - lastPinB;
+					}
+
+					lastPinB = now;
+			}
+			break;
+
+		default:
+		{
+			GPIOPinIntClear(GPIO_PORTA_BASE, lIntPinStatus);
+			break;
+
+		}
+	}
 }
-
-
-//fired when pin triggers high
-void GPIO_PortB_IntHandler(void){
-	unsigned long now = ROM_SysTickValueGet();
-
-	if(lastPinB > now){
-		//fix for counter-rolover
-		lastDurationB = (SysTickPeriodGet() - lastPinB) + now;
-	}
-	else{
-		lastDurationB = now - lastPinB;
-	}
-
-	lastPinB = now;
-    GPIOPinIntClear(GPIO_PORTB_BASE, GPIO_PIN_0);
-}
-
 void timerSetup(){
-
-
-    //enable PWM STUFF
-
-    // Turn off LEDs
-//    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOB);
-	/*
-    GPIOPinTypeGPIOOutput(GPIO_PORTB_BASE, GPIO_PIN_4|GPIO_PIN_5|GPIO_PIN_6 | GPIO_PIN_7);
-    GPIOPinWrite(GPIO_PORTB_BASE, GPIO_PIN_4|GPIO_PIN_5|GPIO_PIN_6 | GPIO_PIN_7, 0);
-
-    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);
-    // Configure LEDs PortF as Timer outputs -> see pg 659 of datasheet
-    //SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOB);
-    GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, GPIO_PIN_0 | GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3);
-
-    GPIOPinConfigure(GPIO_PF1_T0CCP1|GPIO_PF2_T1CCP0|GPIO_PF3_T1CCP1 | GPIO_PF0_T0CCP0);
-
-    //ROM_GPIOPinConfigure(GPIO_PB4_T1CCP0 | GPIO_PB5_T1CCP1 |GPIO_PB6_T0CCP0 | GPIO_PB7_T0CCP1);
-    GPIOPinTypeTimer(GPIO_PORTF_BASE, GPIO_PIN_0|GPIO_PIN_1|GPIO_PIN_2 | GPIO_PIN_3);
-
-    //GPIOPinTypeTimer(GPIO_PORTB_BASE, GPIO_PIN_4|GPIO_PIN_5|GPIO_PIN_6 | GPIO_PIN_7);
-
-    // Configure timer 0 – this timer outputs to pf1 (led)
-    //https://sites.google.com/site/narasimhaweb/projects/pwm-on-stellaris-launchpad
-
-    SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER0);
-    SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER1);
-
-    TimerConfigure(TIMER0_BASE, TIMER_CFG_SPLIT_PAIR|TIMER_CFG_A_PWM | TIMER_CFG_B_PWM );
-    TimerConfigure(TIMER1_BASE, TIMER_CFG_SPLIT_PAIR|TIMER_CFG_A_PWM | TIMER_CFG_B_PWM );
-  //  TimerControlLevel(TIMER0_BASE, TIMER_A | TIMER_B, true); //invert the output, as we're counting down from ulPeriod, its off till hits 'match' than on down to 0
-  //  TimerControlLevel(TIMER1_BASE, TIMER_A | TIMER_B, true); //invert the output, as we're counting down from ulPeriod, its off till hits 'match' than on down to 0
-
-    //-----------------------------
-    TimerLoadSet(TIMER0_BASE, TIMER_A, PWM_FREQUENCY -1);
-    TimerLoadSet(TIMER0_BASE, TIMER_B, PWM_FREQUENCY -1);
-
-    TimerMatchSet(TIMER0_BASE, TIMER_A, 0); // PWM
-    TimerMatchSet(TIMER0_BASE, TIMER_B, 0); // PWM
-    //--------------------------
-    TimerLoadSet(TIMER1_BASE, TIMER_A, PWM_FREQUENCY -1);
-	TimerLoadSet(TIMER1_BASE, TIMER_B, PWM_FREQUENCY -1);
-
-	TimerMatchSet(TIMER1_BASE, TIMER_A, 0); // PWM
-	TimerMatchSet(TIMER1_BASE, TIMER_B, 0); // PWM
-
-
-  //  TimerControlLevel(TIMER0_BASE, TIMER_BOTH, 0); // Timer 0 is trigger low
-    TimerEnable(TIMER0_BASE, TIMER_BOTH);
-    TimerEnable(TIMER1_BASE, TIMER_BOTH);
-*/
 
 	    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF); // Enable port F
 	    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOB); // Enable port B
@@ -159,6 +120,35 @@ void timerSetup(){
 }
 
 
+
+void setupCapture(){
+
+	  //the TSL235R runs between 0 - 100khz (dark/full saturation) @5v
+	    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOA);
+
+	    //Make a pin an input:
+	    GPIOPinTypeGPIOInput(GPIO_PORTA_BASE, GPIO_PIN_7);//GPIO_PIN_6 | GPIO_PIN_7);
+
+	    //we select falling edge, our light sensor has always 50% duty-cycle, so the freq, determines light-intensity.
+
+	    //TODO fix for 2
+	    GPIOIntTypeSet(GPIO_PORTA_BASE,  GPIO_PIN_7, GPIO_FALLING_EDGE); //(GPIO_PIN_6 | GPIO_PIN_7), GPIO_FALLING_EDGE);
+
+	    //clear the bit from this interrupt as it has occurred, to enable the next interrupt
+	    GPIOPinIntClear(GPIO_PORTA_BASE,  GPIO_PIN_7); // (GPIO_PIN_6 | GPIO_PIN_7));
+
+	    //now enable this interrupt actually
+	    GPIOPinIntEnable(GPIO_PORTA_BASE, GPIO_PIN_7);//(GPIO_PIN_6 | GPIO_PIN_7));
+
+
+	   // Enable interrupts to the processor.
+	   IntEnable(INT_GPIOA);
+
+	    // Set up and enable the SysTick timer.  It will be used as a reference
+	    // for delay loops in the interrupt handlers.  The SysTick timer period
+	    // will be set up for one second.
+	    //
+}
 
 //*****************************************************************************
 //
@@ -211,66 +201,42 @@ main(void)
     //TIMER
     timerSetup();
 
+
+
     //VINCENT
     //ENABLE portD for interrupts connection
 
-    //the TSL235R runs between 0 - 100khz (dark/full saturation) @5v
-    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOD);
 
-    //Make a pin an input:
-    GPIOPinTypeGPIOInput(GPIO_PORTD_BASE, GPIO_PIN_0);
-    GPIOPinTypeGPIOInput(GPIO_PORTB_BASE, GPIO_PIN_0);
-
-
-    //we select falling edge, our light sensor has always 50% duty-cycle, so the freq, determines light-intensity.
-    GPIOIntTypeSet(GPIO_PORTD_BASE, GPIO_PIN_0, GPIO_FALLING_EDGE);
-    GPIOIntTypeSet(GPIO_PORTB_BASE, GPIO_PIN_0, GPIO_FALLING_EDGE);
-
-    //clear the bit from this interrupt as it has occurred, to enable the next interrupt
-    GPIOPinIntClear(GPIO_PORTD_BASE, GPIO_PIN_0);
-    GPIOPinIntClear(GPIO_PORTB_BASE, GPIO_PIN_0);
-
-    //now enable this interrupt actually
-    GPIOPinIntEnable(GPIO_PORTD_BASE, GPIO_PIN_0);
-    GPIOPinIntEnable(GPIO_PORTB_BASE, GPIO_PIN_0);
-
-
-
-    // Set up and enable the SysTick timer.  It will be used as a reference
-    // for delay loops in the interrupt handlers.  The SysTick timer period
-    // will be set up for one second.
-    //
     ROM_SysTickPeriodSet(ROM_SysCtlClockGet());
     ROM_SysTickEnable();
 
-    //
-    // Enable interrupts to the processor.
-    IntEnable(INT_GPIOD);
- //   IntEnable(INT_GPIOB);
+    //capture
+    setupCapture();
+
 
     ROM_IntMasterEnable();
     UARTprintf("System Clock=%d  %d Mhz\n",SysCtlClockGet(),SysCtlClockGet()/1000000L);
 
     UARTprintf("put MAX value on sensor\n");
 
-    driveCoil1(20);
+    driveCoil2(20);
 
     //wait for the position
     Delay(20);
-    calibMaxX = lastDurationA;
+    calibMaxX = lastDurationB;
 
     //TEST PID CODE
 
     //disable coild
-    driveCoil1(0);
+    driveCoil2(0);
     Delay(20);
     UARTprintf("put MIN value on sensor\n");
 
-    driveCoil1(-20);
+    driveCoil2(-20);
     //wait for the position
     Delay(20);
-    calibMinX = lastDurationA;
-    driveCoil1(0);
+    calibMinX = lastDurationB;
+    driveCoil2(0);
 
     unsigned long range = calibMaxX - calibMinX;
 
@@ -305,14 +271,15 @@ main(void)
 
     while(1)
     {
-  		Delay(10);
 
-		double currentPosition = map(lastDurationA, calibMinX, calibMaxX, 0, 1000);
+		double currentPosition = map(lastDurationB, calibMinX, calibMaxX, 0, 1000);
 		long error = (newPosition - currentPosition);
      	double drive = UpdatePID(&xAxis, error, currentPosition);
 		//do output to pwm or something
-    	UARTprintf("sensdata:: ");
-    		printDouble(lastDurationA);
+    	/*
+
+     	UARTprintf("sensdata:: ");
+    		printDouble(lastDurationB);
 
   		UARTprintf("current: ");
 		printDouble(currentPosition);
@@ -323,8 +290,10 @@ main(void)
 		UARTprintf("\npid cmd:  ");
 		printDouble(drive);
 		UARTprintf(" \n---\n");
+		  		Delay(10);
 
-		driveCoil1(drive);
+*/
+		driveCoil2(drive);
     	}
     }
 

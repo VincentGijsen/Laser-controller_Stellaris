@@ -67,8 +67,7 @@ extern unsigned long __STACK_TOP;
 // External declarations for the interrupt handlers used by the application.
 //
 //*****************************************************************************
-extern void GPIO_PortD_IntHandler(void);
-extern void GPIO_PortB_IntHandler(void);
+extern void GPIO_PortA_IntHandler(void);
 //extern void IntGPIOb(void);
 //extern void IntGPIOc(void);
 
@@ -99,10 +98,10 @@ void (* const g_pfnVectors[])(void) =
     0,                                      // Reserved
     IntDefaultHandler,                      // The PendSV handler
     IntDefaultHandler,                      // The SysTick handler
-    IntDefaultHandler,                               // GPIO Port A
-    GPIO_PortB_IntHandler,                               // GPIO Port B
-    IntDefaultHandler,                               // GPIO Port C
-    GPIO_PortD_IntHandler,                      // GPIO Port D
+    GPIO_PortA_IntHandler,                  // GPIO Port A
+    IntDefaultHandler,                      // GPIO Port B
+    IntDefaultHandler,                      // GPIO Port C
+    IntDefaultHandler,                      // GPIO Port D
     IntDefaultHandler,                      // GPIO Port E
     IntDefaultHandler,                      // UART0 Rx and Tx
     IntDefaultHandler,                      // UART1 Rx and Tx

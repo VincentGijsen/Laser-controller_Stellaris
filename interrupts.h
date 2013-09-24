@@ -8,10 +8,10 @@
 #ifndef INTERRUPTS_H_
 #define INTERRUPTS_H_
 
-#define PWM_FREQUENCY 1000
+#define PWM_FREQUENCY 4000
 
-#define MAX_DRIVE_COIL1 50
-#define MAX_DRIVE_COIL2 50
+#define MAX_DRIVE_COIL1 400
+#define MAX_DRIVE_COIL2 400
 
 //Prototypes
 
