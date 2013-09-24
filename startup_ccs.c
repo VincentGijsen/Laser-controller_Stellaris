@@ -22,6 +22,21 @@
 //
 //*****************************************************************************
 
+//#include "inc/hw_ints.h"
+#include "inc/hw_memmap.h"
+//#include "inc/hw_nvic.h"
+#include "inc/hw_types.h"
+//#include "driverlib/debug.h"
+//#include "driverlib/fpu.h"
+#include "driverlib/gpio.h"
+//#include "driverlib/interrupt.h"
+#include "driverlib/pin_map.h"
+//#include "driverlib/rom.h"
+//#include "driverlib/sysctl.h"
+//#include "driverlib/systick.h"
+#include "driverlib/timer.h"
+//#include "utils/uartstdio.h"
+
 //*****************************************************************************
 //
 // Forward declaration of the default fault handlers.
@@ -53,6 +68,7 @@ extern unsigned long __STACK_TOP;
 //
 //*****************************************************************************
 extern void GPIO_PortD_IntHandler(void);
+extern void GPIO_PortB_IntHandler(void);
 //extern void IntGPIOb(void);
 //extern void IntGPIOc(void);
 
@@ -84,7 +100,7 @@ void (* const g_pfnVectors[])(void) =
     IntDefaultHandler,                      // The PendSV handler
     IntDefaultHandler,                      // The SysTick handler
     IntDefaultHandler,                               // GPIO Port A
-    IntDefaultHandler,                               // GPIO Port B
+    GPIO_PortB_IntHandler,                               // GPIO Port B
     IntDefaultHandler,                               // GPIO Port C
     GPIO_PortD_IntHandler,                      // GPIO Port D
     IntDefaultHandler,                      // GPIO Port E
@@ -273,6 +289,18 @@ NmiSR(void)
 static void
 FaultISR(void)
 {
+	//we kill the timers, so the coils won't burn in an unexpected position
+	 TimerMatchSet(TIMER0_BASE, TIMER_A, 0);
+	 TimerMatchSet(TIMER0_BASE, TIMER_A, 0);
+	 TimerMatchSet(TIMER1_BASE, TIMER_A, 0);
+	 TimerMatchSet(TIMER1_BASE, TIMER_A, 0);
+
+	 TimerDisable(TIMER1_BASE, TIMER_A);
+	 TimerDisable(TIMER1_BASE, TIMER_B);
+
+	 //write inputs to 0
+	 GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3, 0);
+
     //
     // Enter an infinite loop.
     //

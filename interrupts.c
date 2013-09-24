@@ -17,6 +17,10 @@
 #include "driverlib/systick.h"
 #include "driverlib/timer.h"
 #include "utils/uartstdio.h"
+
+#include "interrupts.h"
+#include "helper.h"
+
 #ifdef DEBUG
 void
 __error__(char *pcFilename, unsigned long ulLine)
@@ -25,131 +29,136 @@ __error__(char *pcFilename, unsigned long ulLine)
 #endif
 
 
-//Data types
-typedef struct
-{
-	double dState; // Last position input
-	double iState; // Integrator state
-	double iMax, iMin;
-	// Maximum and minimum allowable integrator state
-	double iGain, // integral gain
-	pGain, // proportional gain
-	dGain; // derivative gain
-} SPid;
-
-//Prototypes
-
-void printDouble(double);
-double UpdatePID(SPid *, double , double);
-//*****************************************************************************
-//
-// Delay for the specified number of seconds.  Depending upon the current
-// SysTick value, the delay will be between N-1 and N seconds (i.e. N-1 full
-// seconds are guaranteed, along with the remainder of the current second).
-//
-//*****************************************************************************
-void
-Delay(unsigned long ulSeconds)
-{
-    //
-    // Loop while there are more seconds to wait.
-    //
-    while(ulSeconds--)
-    {
-        //
-        // Wait until the SysTick value is less than 1000.
-        //
-        while(ROM_SysTickValueGet() > 1000)
-        {
-        }
-
-        //
-        // Wait until the SysTick value is greater than 1000.
-        //
-        while(ROM_SysTickValueGet() < 1000)
-        {
-        }
-    }
-}
-void
-DisplayIntStatus(void)
-{
-   // unsigned long ulTemp;
-
-    //
-    // Display the currently active interrupts.
-    //
-  //  ulTemp = HWREG(NVIC_ACTIVE0);
-   // UARTprintf("\rActive: %c%c%c ", (ulTemp & 1) ? '1' : ' ',
-    //           (ulTemp & 2) ? '2' : ' ', (ulTemp & 4) ? '3' : ' ');
-
-    //
-    // Display the currently pending interrupts.
-    //
-   // ulTemp = HWREG(NVIC_PEND0);
-   // UARTprintf("Pending: %c%c%c", (ulTemp & 1) ? '1' : ' ',
-      //         (ulTemp & 2) ? '2' : ' ', (ulTemp & 4) ? '3' : ' ');
-}
 
 //THE interupt handler routine for our light-reciever
 
-volatile unsigned long lastPin0Time = 0;
-volatile unsigned long lastDurationPin0 = 0;
+volatile unsigned long lastPinA = 0;
+volatile unsigned long lastPinB = 0;
+volatile unsigned long lastDurationA = 0;
+volatile unsigned long lastDurationB = 0;
 
+unsigned long calibMaxX=1;
+unsigned long calibMinX=2;
 
-volatile unsigned int calibMaxX=0;
-volatile unsigned int calibMinX=0;
+volatile int xPosition = 0;
 
 volatile float currentfeedbackY = 0.0f;
 
-
+//fired when pin triggers high
 void GPIO_PortD_IntHandler(void){
-	unsigned long ulCurrentPin0 = ROM_SysTickValueGet();
+	unsigned long now = ROM_SysTickValueGet();
 
-	if(lastPin0Time > ulCurrentPin0){
-		//fix for counter-rolover
-		lastDurationPin0 = (ulCurrentPin0 + SysTickPeriodGet()) - lastPin0Time;
+	if(lastPinA > now){
+		//fix for counter-roll_over
+		lastDurationA = (SysTickPeriodGet() - lastPinA) + now;
 	}
 	else{
-		lastDurationPin0 = ulCurrentPin0 - lastPin0Time;
+		lastDurationA = now - lastPinA;
 	}
-	//make last time current time for next roll;
 
-
-	lastPin0Time = ulCurrentPin0;
-    //some variables
+	lastPinA = now;
     GPIOPinIntClear(GPIO_PORTD_BASE, GPIO_PIN_0);
-    //some code
 }
 
-void ftoa(float f,char *buf)
-{
-    int pos=0,ix,dp,num;
-    if (f<0)
-    {
-        buf[pos++]='-';
-        f = -f;
-    }
-    dp=0;
-    while (f>=10.0)
-    {
-        f=f/10.0;
-        dp++;
-    }
-    for (ix=1;ix<8;ix++)
-    {
-            num = (int)f;
-            f=f-num;
-            if (num>9)
-                buf[pos++]='#';
-            else
-                buf[pos++]='0'+num;
-            if (dp==0) buf[pos++]='.';
-            f=f*10.0;
-            dp--;
-    }
+
+//fired when pin triggers high
+void GPIO_PortB_IntHandler(void){
+	unsigned long now = ROM_SysTickValueGet();
+
+	if(lastPinB > now){
+		//fix for counter-rolover
+		lastDurationB = (SysTickPeriodGet() - lastPinB) + now;
+	}
+	else{
+		lastDurationB = now - lastPinB;
+	}
+
+	lastPinB = now;
+    GPIOPinIntClear(GPIO_PORTB_BASE, GPIO_PIN_0);
 }
 
+void timerSetup(){
+
+
+    //enable PWM STUFF
+
+    // Turn off LEDs
+//    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOB);
+	/*
+    GPIOPinTypeGPIOOutput(GPIO_PORTB_BASE, GPIO_PIN_4|GPIO_PIN_5|GPIO_PIN_6 | GPIO_PIN_7);
+    GPIOPinWrite(GPIO_PORTB_BASE, GPIO_PIN_4|GPIO_PIN_5|GPIO_PIN_6 | GPIO_PIN_7, 0);
+
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);
+    // Configure LEDs PortF as Timer outputs -> see pg 659 of datasheet
+    //SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOB);
+    GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, GPIO_PIN_0 | GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3);
+
+    GPIOPinConfigure(GPIO_PF1_T0CCP1|GPIO_PF2_T1CCP0|GPIO_PF3_T1CCP1 | GPIO_PF0_T0CCP0);
+
+    //ROM_GPIOPinConfigure(GPIO_PB4_T1CCP0 | GPIO_PB5_T1CCP1 |GPIO_PB6_T0CCP0 | GPIO_PB7_T0CCP1);
+    GPIOPinTypeTimer(GPIO_PORTF_BASE, GPIO_PIN_0|GPIO_PIN_1|GPIO_PIN_2 | GPIO_PIN_3);
+
+    //GPIOPinTypeTimer(GPIO_PORTB_BASE, GPIO_PIN_4|GPIO_PIN_5|GPIO_PIN_6 | GPIO_PIN_7);
+
+    // Configure timer 0 – this timer outputs to pf1 (led)
+    //https://sites.google.com/site/narasimhaweb/projects/pwm-on-stellaris-launchpad
+
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER0);
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER1);
+
+    TimerConfigure(TIMER0_BASE, TIMER_CFG_SPLIT_PAIR|TIMER_CFG_A_PWM | TIMER_CFG_B_PWM );
+    TimerConfigure(TIMER1_BASE, TIMER_CFG_SPLIT_PAIR|TIMER_CFG_A_PWM | TIMER_CFG_B_PWM );
+  //  TimerControlLevel(TIMER0_BASE, TIMER_A | TIMER_B, true); //invert the output, as we're counting down from ulPeriod, its off till hits 'match' than on down to 0
+  //  TimerControlLevel(TIMER1_BASE, TIMER_A | TIMER_B, true); //invert the output, as we're counting down from ulPeriod, its off till hits 'match' than on down to 0
+
+    //-----------------------------
+    TimerLoadSet(TIMER0_BASE, TIMER_A, PWM_FREQUENCY -1);
+    TimerLoadSet(TIMER0_BASE, TIMER_B, PWM_FREQUENCY -1);
+
+    TimerMatchSet(TIMER0_BASE, TIMER_A, 0); // PWM
+    TimerMatchSet(TIMER0_BASE, TIMER_B, 0); // PWM
+    //--------------------------
+    TimerLoadSet(TIMER1_BASE, TIMER_A, PWM_FREQUENCY -1);
+	TimerLoadSet(TIMER1_BASE, TIMER_B, PWM_FREQUENCY -1);
+
+	TimerMatchSet(TIMER1_BASE, TIMER_A, 0); // PWM
+	TimerMatchSet(TIMER1_BASE, TIMER_B, 0); // PWM
+
+
+  //  TimerControlLevel(TIMER0_BASE, TIMER_BOTH, 0); // Timer 0 is trigger low
+    TimerEnable(TIMER0_BASE, TIMER_BOTH);
+    TimerEnable(TIMER1_BASE, TIMER_BOTH);
+*/
+
+	    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF); // Enable port F
+	    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOB); // Enable port B
+	    GPIOPinConfigure(GPIO_PB4_T1CCP0); // Configure pin PF2 as output of Timer 1_A
+	    GPIOPinConfigure(GPIO_PB5_T1CCP1); // Configure pin PF3 as output of Timer 1_B
+	    GPIOPinConfigure(GPIO_PB6_T0CCP0); // Configure pin PB6 as output of Timer 0_A
+	    GPIOPinConfigure(GPIO_PB7_T0CCP1); // Configure pin PB7 as output of Timer 0_B
+	    GPIOPinTypeTimer(GPIO_PORTB_BASE, GPIO_PIN_4 ); // Enable pin PF2 as output of timer addressed to it
+	    GPIOPinTypeTimer(GPIO_PORTB_BASE, GPIO_PIN_5 ); // Enable pin PF3 as output of timer addressed to it
+	    GPIOPinTypeTimer(GPIO_PORTB_BASE, GPIO_PIN_6 ); // Enable pin PB6 as output of timer addressed to it
+	    GPIOPinTypeTimer(GPIO_PORTB_BASE, GPIO_PIN_7 ); // Enable pin PB7 as output of timer addressed to it
+
+	    SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER1); // Enable Timer 1
+	    SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER0); // Enable Timer 0
+	    TimerConfigure(TIMER1_BASE, (TIMER_CFG_SPLIT_PAIR|TIMER_CFG_A_PWM|TIMER_CFG_B_PWM)); // Configure Timer 1 as two 16 but timers with both functioning as PWM
+	    TimerConfigure(TIMER0_BASE, (TIMER_CFG_SPLIT_PAIR|TIMER_CFG_A_PWM|TIMER_CFG_B_PWM)); // Configure Timer 0 as two 16 but timers with both functioning as PWM
+	    TimerControlLevel(TIMER1_BASE, TIMER_BOTH, 1); //  Timer 1 is trigger low
+	    TimerControlLevel(TIMER0_BASE, TIMER_BOTH, 1); // Timer 0 is trigger low
+	    TimerLoadSet(TIMER1_BASE, TIMER_A, PWM_FREQUENCY -1); // Timer 1 Load set
+	    TimerLoadSet(TIMER1_BASE, TIMER_B, PWM_FREQUENCY -1);
+	    TimerLoadSet(TIMER0_BASE, TIMER_A, PWM_FREQUENCY -1); // Timer 0 Load set
+	    TimerLoadSet(TIMER0_BASE, TIMER_B, PWM_FREQUENCY -1);
+	    TimerMatchSet(TIMER1_BASE, TIMER_A, 100); // Timer 1 Match set
+	    TimerMatchSet(TIMER1_BASE, TIMER_B, 100);
+	    TimerMatchSet(TIMER0_BASE, TIMER_A, 100); // Timer 0 Match set
+	    TimerMatchSet(TIMER0_BASE, TIMER_B, 100);
+	    TimerEnable(TIMER1_BASE, TIMER_BOTH);
+	    TimerEnable(TIMER0_BASE, TIMER_BOTH);
+
+}
 
 
 
@@ -164,14 +173,14 @@ void ftoa(float f,char *buf)
 int
 main(void)
 {
-	unsigned long ulPeriod =1000 ;
-	volatile unsigned long dutyCycle = 800;
+	unsigned long ulPeriod = PWM_FREQUENCY ;
+	volatile unsigned long dutyCycle = 0;
 
 	//Config PID stuff;
 	SPid xAxis;
-	xAxis.pGain = 10;
-	xAxis.iGain = 0.1;
-	xAxis.dGain = 50;
+	xAxis.pGain = 0.5;
+	xAxis.iGain = 0.001;
+	xAxis.dGain = 0.001;
 
 
     //
@@ -181,11 +190,10 @@ main(void)
     //
     ROM_FPULazyStackingEnable();
 
-    //
     // Set the clocking to run directly from the crystal.
     //
- //   ROM_SysCtlClockSet(SYSCTL_SYSDIV_1 | SYSCTL_USE_OSC | SYSCTL_OSC_MAIN |
-   //                    SYSCTL_XTAL_16MHZ);
+    //   ROM_SysCtlClockSet(SYSCTL_SYSDIV_1 | SYSCTL_USE_OSC | SYSCTL_OSC_MAIN |
+    //                    SYSCTL_XTAL_16MHZ);
 
     SysCtlClockSet(SYSCTL_SYSDIV_2_5| SYSCTL_USE_PLL | SYSCTL_OSC_MAIN | SYSCTL_XTAL_16MHZ);  //80MHz
     //
@@ -203,54 +211,33 @@ main(void)
     UARTStdioInit(0);
 
 
+    //TIMER
+    timerSetup();
+
     //VINCENT
-    //ENABLE portD for interrupts conection
+    //ENABLE portD for interrupts connection
 
     //the TSL235R runs between 0 - 100khz (dark/full saturation) @5v
     SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOD);
 
     //Make a pin an input:
     GPIOPinTypeGPIOInput(GPIO_PORTD_BASE, GPIO_PIN_0);
+    GPIOPinTypeGPIOInput(GPIO_PORTB_BASE, GPIO_PIN_0);
+
 
     //we select falling edge, our light sensor has always 50% duty-cycle, so the freq, determines light-intensity.
     GPIOIntTypeSet(GPIO_PORTD_BASE, GPIO_PIN_0, GPIO_FALLING_EDGE);
+    GPIOIntTypeSet(GPIO_PORTB_BASE, GPIO_PIN_0, GPIO_FALLING_EDGE);
 
     //clear the bit from this interrupt as it has occurred, to enable the next interrupt
     GPIOPinIntClear(GPIO_PORTD_BASE, GPIO_PIN_0);
+    GPIOPinIntClear(GPIO_PORTB_BASE, GPIO_PIN_0);
 
     //now enable this interrupt actually
     GPIOPinIntEnable(GPIO_PORTD_BASE, GPIO_PIN_0);
-
-    //add an reference in the interrupt-service
-    IntEnable(INT_GPIOD);
-
-    //enable PWM STUFF
-
-    // Turn off LEDs
-    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);
-    GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3);
-    GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3, 0);
-
-    // Configure LEDs PortF as Timer outputs -> see pg 659 of datasheet
-    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF);
-    //GPIOPinConfigure(GPIO_PF1_T0CCP1|GPIO_PF2_T1CCP0|GPIO_PF3_T1CCP1);
+    GPIOPinIntEnable(GPIO_PORTB_BASE, GPIO_PIN_0);
 
 
-    ROM_GPIOPinConfigure(GPIO_PF3_T1CCP1);
-    ROM_GPIOPinConfigure(GPIO_PF2_T1CCP0);
-    ROM_GPIOPinConfigure(GPIO_PF1_T0CCP1);
-
-    GPIOPinTypeTimer(GPIO_PORTF_BASE, GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3);
-
-
-    // Configure timer 0 – this timer outputs to pf1 (led)
-    //https://sites.google.com/site/narasimhaweb/projects/pwm-on-stellaris-launchpad
-
-    SysCtlPeripheralEnable(SYSCTL_PERIPH_TIMER0);
-    TimerConfigure(TIMER0_BASE, TIMER_CFG_SPLIT_PAIR|TIMER_CFG_B_PWM);
-    TimerLoadSet(TIMER0_BASE, TIMER_B, ulPeriod -1);
-    TimerMatchSet(TIMER0_BASE, TIMER_B, dutyCycle); // PWM
-    TimerEnable(TIMER0_BASE, TIMER_B);
 
     // Set up and enable the SysTick timer.  It will be used as a reference
     // for delay loops in the interrupt handlers.  The SysTick timer period
@@ -261,24 +248,36 @@ main(void)
 
     //
     // Enable interrupts to the processor.
-    //
-    ROM_IntMasterEnable();
+    IntEnable(INT_GPIOD);
+ //   IntEnable(INT_GPIOB);
 
-    //
-    // Enable the interrupts.
-    //
+    ROM_IntMasterEnable();
+    UARTprintf("System Clock=%d  %d Mhz\n",SysCtlClockGet(),SysCtlClockGet()/1000000L);
+
+    UARTprintf("put MAX value on sensor\n");
+
+    driveCoil1(20);
+
+    //wait for the position
+    Delay(20);
+    calibMaxX = lastDurationA;
 
     //TEST PID CODE
-    UARTprintf("put MAX value on sensor\n");
-    Delay(20);
-    calibMaxX = lastDurationPin0;
 
+    //disable coild
+    driveCoil1(0);
+    Delay(20);
     UARTprintf("put MIN value on sensor\n");
+
+    driveCoil1(-20);
+    //wait for the position
     Delay(20);
-    calibMinX = lastDurationPin0;
+    calibMinX = lastDurationA;
+    driveCoil1(0);
 
 
-    unsigned int range = calibMaxX - calibMinX;
+
+    unsigned long range = calibMaxX - calibMinX;
 
     UARTprintf("done calibrating\n");
     UARTprintf("MAX: ");
@@ -298,12 +297,12 @@ main(void)
     xAxis.iMin = -100;
 
     //setting setpoint to 0
-    UARTprintf("setting set-point to 0\n");
-    double newPosition = (calibMinX + (range/2));
+    UARTprintf("setting set-point to 500\n");
+    double newPosition = 500;
 
     UARTprintf("setpoint set to: ");
-       printDouble(newPosition);
-       UARTprintf("\n");
+    printDouble(newPosition);
+    UARTprintf("\n");
 
     //
     UARTprintf("Started Program laserControlls\n");
@@ -311,19 +310,18 @@ main(void)
 
     while(1)
     {
-       	TimerMatchSet(TIMER0_BASE, TIMER_B, dutyCycle++);
+  		Delay(10);
 
-		if(dutyCycle >= ulPeriod - 1)
-			dutyCycle = 0;
+		double currentPosition = map(lastDurationA, calibMinX, calibMaxX, 0, 1000);
+		long error = (newPosition - currentPosition);
+     	double drive = UpdatePID(&xAxis, error, currentPosition);
 
-		SysCtlDelay(10000000);
-//		SysCtlDelay(200000);
 
-		double currentPosition = calibMinX +lastDurationPin0;
-		double error = (newPosition - currentPosition);
-		double drive = UpdatePID(&xAxis, error, currentPosition);
 		//do output to pwm or something
-		UARTprintf("current: ");
+    	UARTprintf("sensdata:: ");
+    		printDouble(lastDurationA);
+
+  		UARTprintf("current: ");
 		printDouble(currentPosition);
 
 		UARTprintf("\nerror: ");
@@ -332,10 +330,55 @@ main(void)
 		UARTprintf("\npid cmd:  ");
 		printDouble(drive);
 		UARTprintf(" \n---\n");
-		//double error =
-    }
+
+
+		driveCoil1(drive);
+}
 }
 
+void driveCoil1(long driveValue){
+	if (driveValue > 0){
+		 TimerMatchSet(TIMER0_BASE, TIMER_A, limitCoil1Drive(driveValue));
+		 TimerMatchSet(TIMER0_BASE, TIMER_B, 0);
+	}
+	else{
+		 TimerMatchSet(TIMER0_BASE, TIMER_B, limitCoil1Drive(driveValue));
+		 TimerMatchSet(TIMER0_BASE, TIMER_A, 0);
+	}
+}
+void driveCoil2(long driveValue){
+	if (driveValue > 0){
+		 TimerMatchSet(TIMER1_BASE, TIMER_A, limitCoil1Drive(driveValue));
+		 TimerMatchSet(TIMER1_BASE, TIMER_B, 0);
+	}
+	else{
+		 TimerMatchSet(TIMER1_BASE, TIMER_B, limitCoil1Drive(driveValue));
+		 TimerMatchSet(TIMER1_BASE, TIMER_A, 0);
+	}
+
+}
+
+
+long limitCoil1Drive(long setpoint){
+	return setpoint > MAX_DRIVE_COIL1? MAX_DRIVE_COIL1 : setpoint;
+}
+
+long limitCoil2Drive(long setpoint){
+	return setpoint > MAX_DRIVE_COIL2? MAX_DRIVE_COIL2 : setpoint;
+}
+
+long map(long x, long in_min, long in_max, long out_min, long out_max)
+{
+  return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+}
+
+double calcProjection(long in){
+	long t =  in - calibMinX;
+	long min = t<0? calibMinX : t;
+
+
+
+}
 void printDouble(double input){
 	char buff[10];
 	ftoa(input, buff);
