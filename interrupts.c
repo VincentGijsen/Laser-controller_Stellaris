@@ -36,11 +36,10 @@ volatile unsigned long lastPinA = 0;
 volatile unsigned long lastPinB = 0;
 volatile unsigned long lastDurationA = 0;
 volatile unsigned long lastDurationB = 0;
-
-unsigned long calibMaxX=1;
-unsigned long calibMinX=2;
-
 volatile int xPosition = 0;
+
+unsigned long calibMaxX = 0;
+unsigned long calibMinX = 0;
 
 volatile float currentfeedbackY = 0.0f;
 
@@ -178,6 +177,7 @@ main(void)
 
 	//Config PID stuff;
 	SPid xAxis;
+
 	xAxis.pGain = 0.5;
 	xAxis.iGain = 0.001;
 	xAxis.dGain = 0.001;
@@ -275,8 +275,6 @@ main(void)
     calibMinX = lastDurationA;
     driveCoil1(0);
 
-
-
     unsigned long range = calibMaxX - calibMinX;
 
     UARTprintf("done calibrating\n");
@@ -293,8 +291,8 @@ main(void)
     UARTprintf("\n");
 
 
-    xAxis.iMax = 100;
-    xAxis.iMin = -100;
+    xAxis.iMax = 0;
+    xAxis.iMin = 100;
 
     //setting setpoint to 0
     UARTprintf("setting set-point to 500\n");
@@ -310,12 +308,12 @@ main(void)
 
     while(1)
     {
+
   		Delay(10);
 
 		double currentPosition = map(lastDurationA, calibMinX, calibMaxX, 0, 1000);
 		long error = (newPosition - currentPosition);
      	double drive = UpdatePID(&xAxis, error, currentPosition);
-
 
 		//do output to pwm or something
     	UARTprintf("sensdata:: ");
@@ -342,7 +340,7 @@ void driveCoil1(long driveValue){
 		 TimerMatchSet(TIMER0_BASE, TIMER_B, 0);
 	}
 	else{
-		 TimerMatchSet(TIMER0_BASE, TIMER_B, limitCoil1Drive(driveValue));
+		 TimerMatchSet(TIMER0_BASE, TIMER_B, limitCoil1Drive(abs(driveValue)));
 		 TimerMatchSet(TIMER0_BASE, TIMER_A, 0);
 	}
 }
@@ -352,7 +350,7 @@ void driveCoil2(long driveValue){
 		 TimerMatchSet(TIMER1_BASE, TIMER_B, 0);
 	}
 	else{
-		 TimerMatchSet(TIMER1_BASE, TIMER_B, limitCoil1Drive(driveValue));
+		 TimerMatchSet(TIMER1_BASE, TIMER_B, limitCoil1Drive(abs(driveValue)));
 		 TimerMatchSet(TIMER1_BASE, TIMER_A, 0);
 	}
 
