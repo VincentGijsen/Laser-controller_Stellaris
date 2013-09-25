@@ -13,6 +13,8 @@
 #define MAX_DRIVE_COIL1 400
 #define MAX_DRIVE_COIL2 400
 
+#define INITIALDRIVE 20
+
 //Prototypes
 
 //Data types
@@ -37,10 +39,10 @@ double UpdatePID(SPid *, double , double);
 long map(long , long , long , long , long );
 
 void driveCoil1(long);
-void driveCoil2(long);
+void setDriveY(long);
 
-long limitCoil1Drive(long);
-long limitCoil2Drive(long);
+long limitDriveX(long);
+long limitDriveY(long);
 
 
 #endif /* INTERRUPTS_H_ */
