@@ -123,11 +123,20 @@ volatile unsigned long lastPinB = 0;
 volatile unsigned long lastDurationA = 0;
 volatile unsigned long lastDurationY = 0;
 volatile int xPosition = 0;
+volatile int yPosition = 0;
 
 volatile long calibMaxY=1;
 volatile long calibMinY=2;
 
 volatile float currentfeedbackY = 0.0f;
+
+//data for point-selection
+double setpointAxisX = 0; //
+double setpointAxisY = 0; //
+
+
+int currentFrame = 0;
+int currentPoint = 0;
 
 //fired when pin triggers high
 void GPIO_PortA_IntHandler(void){
@@ -174,6 +183,13 @@ void GPIO_PortA_IntHandler(void){
 	}
 	}
 }
+void setupLeds(){
+	SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF); // Enable port F
+	GPIOPinTypeGPIOOutput(GPIO_PORTF_BASE, RED_LED|BLUE_LED|GREEN_LED);
+	RED_OFF;
+	GREEN_OFF;
+	BLUE_OFF;
+}
 void setupTimers(){
 
 	SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOF); // Enable port F
@@ -197,10 +213,10 @@ void setupTimers(){
 	TimerLoadSet(TIMER1_BASE, TIMER_B, PWM_FREQUENCY -1);
 	TimerLoadSet(TIMER0_BASE, TIMER_A, PWM_FREQUENCY -1); // Timer 0 Load set
 	TimerLoadSet(TIMER0_BASE, TIMER_B, PWM_FREQUENCY -1);
-	TimerMatchSet(TIMER1_BASE, TIMER_A, 100); // Timer 1 Match set
-	TimerMatchSet(TIMER1_BASE, TIMER_B, 100);
-	TimerMatchSet(TIMER0_BASE, TIMER_A, 100); // Timer 0 Match set
-	TimerMatchSet(TIMER0_BASE, TIMER_B, 100);
+	TimerMatchSet(TIMER1_BASE, TIMER_A, 0); // Timer 1 Match set
+	TimerMatchSet(TIMER1_BASE, TIMER_B, 0);
+	TimerMatchSet(TIMER0_BASE, TIMER_A, 0); // Timer 0 Match set
+	TimerMatchSet(TIMER0_BASE, TIMER_B, 0);
 	TimerEnable(TIMER1_BASE, TIMER_BOTH);
 	TimerEnable(TIMER0_BASE, TIMER_BOTH);
 
@@ -263,9 +279,9 @@ main(void)
 
 	//Config PID stuff;
 	SPid pidY;
-	pidY.pGain = 0.5;
-	pidY.iGain = 0.001;
-	pidY.dGain = 0.001;
+	pidY.pGain = 0.010;
+	pidY.iGain = 0.00001;
+	pidY.dGain = 1;
 
 	//
 	// Enable lazy stacking for interrupt handlers.  This allows floating-point
@@ -290,6 +306,8 @@ main(void)
 	//TIMER
 	setupTimers();
 
+	setupLeds();
+
 
 
 	//VINCENT
@@ -307,25 +325,29 @@ main(void)
 	UARTprintf("System Clock=%d  %d Mhz\n",SysCtlClockGet(),SysCtlClockGet()/1000000L);
 
 	UARTprintf("put MAX value on sensor\n");
-
+	RED_ON;
 	setDriveY(INITIALDRIVE);
 
 	//wait for the position
-	Delay(20);
+	Delay(STARTUP_DELAY_CALIB);
 	calibMaxY = lastDurationY;
+	RED_OFF;
 
 	//TEST PID CODE
 
 	//disable coild
 	setDriveY(0);
-	Delay(-INITIALDRIVE);
+	Delay(STARTUP_DELAY_CALIB);
+	RED_ON;
 	UARTprintf("put MIN value on sensor\n");
 
-	setDriveY(-20);
+	setDriveY(-INITIALDRIVE);
 	//wait for the position
-	Delay(20);
+	Delay(STARTUP_DELAY_CALIB);
 	calibMinY = lastDurationY;
 	setDriveY(0);
+	RED_OFF;
+	GREEN_ON;
 
 	unsigned long range = calibMaxY - calibMinY;
 
@@ -344,12 +366,12 @@ main(void)
 
 
 
-	pidY.iMax = 0;
-	pidY.iMin = 100;
+	pidY.iMax = 100;
+	pidY.iMin = -100;
 
 	//setting setpoint to 0
 	UARTprintf("setting set-point to 500\n");
-	double setpointAxisY = 500; //
+	setpointAxisY = SCALE_MAX/4; //
 
 	UARTprintf("setpointAxisX set to: ");
 	printDouble(setpointAxisY);
@@ -358,11 +380,11 @@ main(void)
 	//
 	UARTprintf("Started Program laserControlls\n");
 
-
+	int toggle = 0;
 	while(1)
 	{
 
-		double currentPositionY = map(lastDurationY, calibMinY, calibMaxY, 0, 1000);
+		double currentPositionY = map(lastDurationY, calibMinY, calibMaxY, 0, SCALE_MAX);
 		long errorY = (setpointAxisY - currentPositionY);
 		double driveY = UpdatePID(&pidY, errorY, currentPositionY);
 		//do output to pwm or something
@@ -384,7 +406,37 @@ main(void)
 
 		 */
 		setDriveY(driveY);
+
+		if(ROM_SysTickValueGet()< 1000  && toggle == 0){
+			toggle = 1;
+			//positionSetter();
+		}
+		if (ROM_SysTickValueGet > 1000){
+			toggle=0;
+		}
+
 	}
+}
+
+void positionSetter(void){
+
+
+	int newX = ani0[currentFrame][currentPoint];
+	int newY = ani0[currentFrame][currentPoint+1];
+	int newL = ani0[currentFrame][currentPoint+2];
+	currentPoint+=3;
+	if (currentPoint >=8*3){
+		currentPoint=0;
+		currentFrame++;
+	}
+	//hardcoded!
+	if (currentFrame >= 6){
+		currentFrame=0;
+	}
+//	setpointAxisY = map(newX,-50, 50, 0, SCALE_MAX);
+	setpointAxisY = map(newY,-50, 50, 0, SCALE_MAX);
+
+
 }
 
 

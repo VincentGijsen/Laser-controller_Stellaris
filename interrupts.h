@@ -8,12 +8,30 @@
 #ifndef INTERRUPTS_H_
 #define INTERRUPTS_H_
 
-#define PWM_FREQUENCY 4000
+#define PWM_FREQUENCY 400
 
-#define MAX_DRIVE_COIL1 400
-#define MAX_DRIVE_COIL2 400
+#define MAX_DRIVE_COIL1 10
+#define MAX_DRIVE_COIL2 10
 
-#define INITIALDRIVE 20
+#define INITIALDRIVE 10
+
+#define STARTUP_DELAY_CALIB 2
+
+#define SCALE_MAX 500
+
+
+
+ #define RED_LED   GPIO_PIN_1
+ #define BLUE_LED  GPIO_PIN_2
+ #define GREEN_LED GPIO_PIN_3
+
+#define RED_ON  GPIOPinWrite(GPIO_PORTF_BASE, RED_LED, RED_LED)
+#define RED_OFF GPIOPinWrite(GPIO_PORTF_BASE, RED_LED, 0)
+#define GREEN_ON  GPIOPinWrite(GPIO_PORTF_BASE, GREEN_LED, GREEN_LED)
+#define GREEN_OFF GPIOPinWrite(GPIO_PORTF_BASE, GREEN_LED, 0)
+#define BLUE_ON  GPIOPinWrite(GPIO_PORTF_BASE, BLUE_LED, BLUE_LED)
+#define BLUE_OFF GPIOPinWrite(GPIO_PORTF_BASE, BLUE_LED, 0)
+
 
 //Prototypes
 
@@ -43,6 +61,8 @@ void setDriveY(long);
 
 long limitDriveX(long);
 long limitDriveY(long);
+
+void positionSetter(void);
 
 
 #endif /* INTERRUPTS_H_ */

@@ -37,6 +37,7 @@
 #include "driverlib/timer.h"
 //#include "utils/uartstdio.h"
 
+#include "interrupts.h"
 //*****************************************************************************
 //
 // Forward declaration of the default fault handlers.
@@ -297,9 +298,8 @@ FaultISR(void)
 	 TimerDisable(TIMER1_BASE, TIMER_A);
 	 TimerDisable(TIMER1_BASE, TIMER_B);
 
-	 //write inputs to 0
-	 GPIOPinWrite(GPIO_PORTF_BASE, GPIO_PIN_1|GPIO_PIN_2|GPIO_PIN_3, 0);
-
+	RED_ON;
+	GREEN_ON;
     //
     // Enter an infinite loop.
     //
